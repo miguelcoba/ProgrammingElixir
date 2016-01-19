@@ -1,20 +1,8 @@
 defmodule Stack.Server do
 	use GenServer
 
-	def start_empty do
-		start_link([])
-	end
-
-	def shutdown do
-		System.halt(1)
-	end
-
-	def start_with_random_data do
-		start_link([1, "abc", 2, "cdf", 3])
-	end
-
-	def start_link(initial_values) do
-		GenServer.start_link(__MODULE__, initial_values, name: __MODULE__)
+	def start_link(stash_pid) do
+		{:ok, _pid} = GenServer.start_link(__MODULE__, stash_pid, name: __MODULE__)
 	end
 
 	def pop do
@@ -29,19 +17,24 @@ defmodule Stack.Server do
 		:sys.get_status __MODULE__
 	end
 
-	def handle_call(:pop, _from, [head | tail]) do
-		{ :reply, head, tail }
+	def init(stash_pid) do
+		current_stack = Stack.Stash.get_value(stash_pid)
+		{:ok, {current_stack, stash_pid}}
 	end
 
-	def handle_cast({:push, value}, stack) do
-		{ :noreply, [value|stack]}
+	def handle_call(:pop, _from, {[head | tail], stash_pid}) do
+		{ :reply, head, {tail, stash_pid} }
+	end
+
+	def handle_cast({:push, value}, {current_stack, stash_pid}) do
+		{ :noreply, {[value|current_stack], stash_pid} }
+	end
+
+	def terminate(_reason, {current_stack, stash_pid}) do
+		Stack.Stash.save_value(stash_pid, current_stack)
 	end
 
 	def format_status(_reason, [ _pdict, state ]) do
 		[data: [{'State', "My current state is '#{inspect state}', and I'm happy"}]]
-	end
-
-	def terminate(reason, state) do
-		IO.puts "Terminated with reason: #{reason}. Final state: #{state}"
 	end
 end
